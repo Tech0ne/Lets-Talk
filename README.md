@@ -20,6 +20,10 @@ The last thing you wanna do, not the easyest one, is to find friends to talk to,
 
 If you want to explore all the possibilities that this script offer, look at `local_chat --help` to see the help menu.
 
+If you want to run that script using docker, build it, and then use :
+    
+    docker run -it -p YOUR_PORT lets-talk
+
 ---
 
 Do not hesitate to give back any updates that I could add, and any issues using that script.

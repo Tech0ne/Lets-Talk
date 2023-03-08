@@ -2,11 +2,9 @@ FROM ubuntu:22.04
 
 WORKDIR /src/
 
-COPY code/main.py .
-COPY requirements.txt .
+COPY . .
 
-RUN apt-get update
-RUN apt-get install -y python3 python3-pip
-RUN pip3 install -r requirements.txt
+RUN chmod +x install_ubuntu.sh
+RUN ./install_ubuntu.sh
 
 CMD [ "python3", "/src/main.py", "--no-scan" ]
