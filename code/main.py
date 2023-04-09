@@ -100,6 +100,7 @@ class Server:
         except OSError:
             print("[-] Address already in use, or could not run bluetooth !")
             print(f"[+] Please kill the process using the port {self.port} and restart the server using the \"srv-start\" command")
+            self.is_stoped.set()
             return
         self.socker.listen(5)
         while not self.is_stoped.is_set():
@@ -567,7 +568,7 @@ def interpret_command(command: str, hosts: dict):
             "Interface": get_iface_name_from_ip(get_main_ip()),
             "Password hash": f"{hashlib.md5(PASSWORD.encode()).hexdigest()[:10]}...",
             "Nb of requests": str(len(list(REQUESTS.keys()))),
-            "Server": "Running" if SRV else "Offline",
+            "Server": "Running" if (SRV and not SRV.is_stoped.is_set()) else "Offline",
         })
     else:
         if command.split(' ')[0]:
