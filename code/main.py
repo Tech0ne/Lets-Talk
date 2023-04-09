@@ -6,6 +6,7 @@ import subprocess
 import threading
 import netifaces
 import readline
+import requests
 import hashlib
 import getpass
 import socket
@@ -21,6 +22,7 @@ DELAY = 0
 NO_SCAN = False
 DO_SERVER = True
 PASSWORD = None
+TYPE = "LAN"
 
 SRV = None
 
@@ -83,17 +85,22 @@ class ProgressBar:
         print(" " * len(f"{self.name:^20} : [{self.spaces}] {self.percent:.2f} %"), end='\r')
 
 class Server:
-    def __init__(self):
+    def __init__(self, host="0.0.0.0"):
+        self.host = host
         self.port = PORT
-        self.socker = socket.socket()
+        if (TYPE == "LAN"):
+            self.socker = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        else:
+            self.socker = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_STREAM, socket.BTPROTO_RFCOMM)
         self.is_stoped = threading.Event()
     
     def run(self):
         try:
-            self.socker.bind(("0.0.0.0", self.port))
+            self.socker.bind((self.host, self.port))
         except OSError:
-            print("[-] Address already in use !")
+            print("[-] Address already in use, or could not run bluetooth !")
             print(f"[+] Please kill the process using the port {self.port} and restart the server using the \"srv-start\" command")
+            return
         self.socker.listen(5)
         while not self.is_stoped.is_set():
             conn, (ip, port) = self.socker.accept()
@@ -106,10 +113,11 @@ class Server:
                 conn.close()
             elif comm.startswith("CONN"):
                 name = username(comm.split('\n')[1])
-                print(f"\n[!] Got a connection request from \"{name}\" ({ip}, on port {port}).")
+                print(f"\n[!] Got a connection request from \"{name}\" (\"{ip}\", on port {port}).")
                 print("[+] Check requests using the \"requests\" command")
+                print(">> ", end='')
                 REQUESTS[(name, ip)] = conn
-    
+
     def accept(self, name):
         conn = None
         for req, _conn in REQUESTS.items():
@@ -151,6 +159,18 @@ def is_ip(ip: str):
             return False
     return True
 
+def is_mac(mac: str):
+    mac = mac.upper()
+    nbs = mac.split(':')
+    if len(nbs) != 6:
+        return False
+    for nb in nbs:
+        if len(nb) != 2:
+            return False
+        if not (nb[0] in "0123456789ABCDEF" and nb[1] in "0123456789ABCDEF"):
+            return False
+    return True
+
 def exit(ret = 0):
     print("\n[!] Exiting...")
     if SRV:
@@ -158,10 +178,11 @@ def exit(ret = 0):
     sys.exit(ret)
 
 def usage():
-    print(f"Usage : {sys.argv[0]} [-p|--port port] [-n|--name name] [-s|--scan-speed speed] [--no-server] [--password] [--no-scan]")
+    print(f"Usage : {sys.argv[0]} [-p|--port port] [-n|--name name] [-s|--scan-speed speed] [-t|--type] [--no-server] [--password] [--no-scan]")
     print("\t-p, --port       port      : Specify the listen and scan port")
     print("\t-n, --name       name      : Specify the name to use in the network")
     print("\t-s --scan-speed  speed     : Specify the delay for the scan (default is 0 second)")
+    print("\t-t --type        type      : Specify connection type : LAN or BLUETOOTH")
     print("\t--no-server                : Do not start a listener (You won't appear online)")
     print("\t--password       password  : Specify the password to use (need to be the same for the both users)")
     print("\t--no-scan                  : Juste start the server and pop the shell, no scan (use the \"scan\" command to do it)")
@@ -217,7 +238,7 @@ def username(name: str):
     return final
 
 def update_configs():
-    global PORT, NAME, DELAY, NO_SCAN, DO_SERVER, PASSWORD
+    global PORT, NAME, DELAY, NO_SCAN, DO_SERVER, PASSWORD, TYPE
     for i in range(len(sys.argv)):
         argv = sys.argv[i]
         if argv in ("-h", "--help"):
@@ -232,6 +253,16 @@ def update_configs():
             if i < (len(sys.argv) - 1):
                 i += 1
                 NAME = username(sys.argv[i])
+            else:
+                usage()
+        if argv in ("-t", "--type"):
+            if i < (len(sys.argv) - 1):
+                i += 1
+                if not sys.argv[i].upper() in ("LAN", "BLUETOOTH"):
+                    usage()
+                TYPE = sys.argv[i].upper()
+                if PORT == 58008:
+                    PORT = 4
             else:
                 usage()
         if argv == "--no-server":
@@ -381,17 +412,31 @@ def handle_recv(s: socket.socket, target: str):
         print(f"[-] Lost connection with {target} !")
 
 def connect_to(name: str, hosts: dict):
-    if not is_ip(username(name)):
-        for k, v in hosts.items():
-            if username(v) == username(name):
-                name = k
-                break
+    if TYPE == "LAN":
         if not is_ip(username(name)):
-            print(f"[-] {username(name)} could not be resolved !")
-            return
+            for k, v in hosts.items():
+                if username(v) == username(name):
+                    name = k
+                    break
+            if not is_ip(username(name)):
+                print(f"[-] {username(name)} could not be resolved !")
+                return
+        name = username(name)
+    else:
+        if not is_mac(name):
+            for k, v in hosts.items():
+                if username(v) == username(name):
+                    name = k
+                    break
+            if not is_mac(name):
+                print(f"[-] {name} could not be resolved !")
+                return
     try:
-        s = socket.socket()
-        s.connect((username(name), PORT))
+        if TYPE == "LAN":
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        else:
+            s = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_STREAM, socket.BTPROTO_RFCOMM)
+        s.connect((name, PORT))
         s.send(b"CONN\n" + NAME.encode())
         print("[+] Connection asked, waiting for response...")
         data = s.recv(2048).decode()
@@ -502,8 +547,52 @@ def interpret_command(command: str, hosts: dict):
         if command.split(' ')[0]:
             print(f"{command.split(' ')[0]}: Command not found !")
 
+class Waiter:
+    def __init__(self, string):
+        self.string     = string
+        self.is_runing  = True
+        self.thread     = threading.Thread(target=self.start_waiter, daemon=True)
+        self.thread.start()
+    
+    def stop(self):
+        self.is_runing  = False
+        self.thread.join()
+
+    def start_waiter(self):
+        i = 0
+        chars = "/-\\|"
+        while self.is_runing:
+            print(f"{self.string} [{chars[i]}]", end='\r', flush=True)
+            time.sleep(0.1)
+            i = (i + 1) % 4
+        print(f"{self.string} [✓]")
+
+def do_zip_update():
+    r = requests.get("https://raw.githubusercontent.com/Tech0ne/Lets-Talk/main/code/main.py").text
+    with open("/usr/bin/local_chat", 'r') as f:
+        data = f.read()
+    if data != r:
+        try:
+            with open("/usr/bin/local_chat", 'w+') as f:
+                f.write(r)
+        except OSError:
+            print("An update is available !")
+            print("Run again as root (using sudo) to update !")
+            sys.exit(1)
+        print("\nLets-talk is now updated !")
+        print("Please restart to aply updates !")
+        sys.exit(1)
+
+w = Waiter("Updating, please wait...")
+
+do_zip_update()
+
+w.stop()
+
+
 def main():
     global PORT, NAME, DELAY, NO_SCAN, PASSWORD, SRV
+    do_zip_update()
     clear()
     update_configs()
     banner()
