@@ -26,7 +26,7 @@ TYPE = "LAN"
 
 SRV = None
 
-ACTIONS = ["scan ", "clear ", "scan-clear ", "quit ", "exit ", "hosts ", "connect ", "srv-start ", "add-host ", "requests ", "ban ", "help ", "name "]
+ACTIONS = ["scan ", "clear ", "scan-clear ", "quit ", "exit ", "hosts ", "connect ", "srv-start ", "add-host ", "requests ", "ban ", "infos ", "help ", "name "]
 COMMANDS = ACTIONS[:]
 
 REQUESTS = {}
@@ -298,20 +298,32 @@ def exec_command(command: str):
 
 def get_main_ip():
     try:
-        return exec_command("hostname -I").split(' ')[0]
+        if TYPE == "LAN":
+            return exec_command("hostname -I").split(' ')[0]
+        else:
+            return exec_command("hcitool dev").split('\t')[-1].split('\n')[0]
     except Exception:
         return None
 
 def get_iface_name_from_ip(ip: str):
-    for iface in netifaces.interfaces():
-        if not netifaces.ifaddresses(iface).get(2):
-            continue
-        if netifaces.ifaddresses(iface).get(2)[0].get('addr') == ip:
-            return iface
-    return None
+    if TYPE == "LAN":
+        for iface in netifaces.interfaces():
+            if not netifaces.ifaddresses(iface).get(2):
+                continue
+            if netifaces.ifaddresses(iface).get(2)[0].get('addr') == ip:
+                return iface
+        return None
+    else:
+        devices = exec_command("hcitool dev").split('\n')[1:]
+        for device in devices:
+            if device.split('\t')[-1] == ip:
+                return device.split('\t')[1]
+        return None
 
 def get_netmask_from_iface(iface: str):
-    return netifaces.ifaddresses(iface)[2][0]['netmask']
+    if TYPE == "LAN":
+        return netifaces.ifaddresses(iface)[2][0]['netmask']
+    return None
 
 def get_targets_list():
     liste = []
@@ -454,6 +466,9 @@ def interpret_command(command: str, hosts: dict):
     global SRV, NAME
     command += ' '
     if command.startswith("scan "):
+        if TYPE != "LAN":
+            print("[!] Can not start bluetooth scan !")
+            return
         scan = run_scan()
         if not len(scan.keys()):
             return
@@ -495,6 +510,7 @@ def interpret_command(command: str, hosts: dict):
         print("\t- name           : Set the username")
         print("\t- ban            : Ban a specific IP")
         print("\t- srv-start      : Start the server (if it was stoped / dod not start)")
+        print("\t- infos          : Display some infos")
         print("\t- help           : Display this help message")
     elif command.startswith("srv-start "):
         if SRV is not None:
@@ -543,6 +559,16 @@ def interpret_command(command: str, hosts: dict):
             except:
                 s.close()
             print("[-] Connection closed !")
+    elif command.startswith("infos "):
+        print_dict({
+            "Username": NAME,
+            "Port": PORT,
+            "IP": get_main_ip(),
+            "Interface": get_iface_name_from_ip(get_main_ip()),
+            "Password hash": f"{hashlib.md5(PASSWORD.encode()).hexdigest()[:10]}...",
+            "Nb of requests": str(len(list(REQUESTS.keys()))),
+            "Server": "Running" if SRV else "Offline",
+        })
     else:
         if command.split(' ')[0]:
             print(f"{command.split(' ')[0]}: Command not found !")
@@ -605,13 +631,13 @@ def main():
         print_dict({
             "Username": NAME,
             "Port": PORT,
-            "Ip": get_main_ip(),
+            "IP": get_main_ip(),
             "Interface": get_iface_name_from_ip(get_main_ip()),
             "Password hash": f"{hashlib.md5(PASSWORD.encode()).hexdigest()[:10]}..."
         })
         print()
         hosts = {}
-        if not NO_SCAN:
+        if not NO_SCAN and TYPE == "LAN":
             hosts = run_scan()
         SRV = Server()
         SRV.start()
