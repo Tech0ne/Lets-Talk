@@ -87,6 +87,8 @@ class ProgressBar:
 class Server:
     def __init__(self, host="0.0.0.0"):
         self.host = host
+        if (TYPE != "LAN"):
+            self.host = get_mac_address()
         self.port = PORT
         if (TYPE == "LAN"):
             self.socker = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -296,6 +298,13 @@ def exec_command(command: str):
         return out.decode()
     except:
         return None
+
+def get_mac_address():
+    n = exec_command("hcitool dev | cut -sf3")
+    if not n:
+        return exec_command("hciconfig | grep 'BD Address' | cut -d' ' -f3")
+    return n
+    
 
 def get_main_ip():
     try:
@@ -610,16 +619,11 @@ def do_zip_update():
         print("Please restart to aply updates !")
         sys.exit(1)
 
-w = Waiter("Updating, please wait...")
-
-do_zip_update()
-
-w.stop()
-
-
 def main():
     global PORT, NAME, DELAY, NO_SCAN, PASSWORD, SRV
+    w = Waiter("Updating, please wait...")
     do_zip_update()
+    w.stop()
     clear()
     update_configs()
     banner()
