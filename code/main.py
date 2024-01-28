@@ -40,7 +40,7 @@ _/_/_/_/    _/_/      _/_/_/    _/_/_/  _/        _/_/_/  _/    _/    _/_/_/    
 
 """
 
-BANNER_B = """ _                     _   _____ _           _   
+BANNER_B = r""" _                     _   _____ _           _   
 | |                   | | /  __ \ |         | |  
 | |     ___   ___ __ _| | | /  \/ |__   __ _| |_ 
 | |    / _ \ / __/ _` | | | |   | '_ \ / _` | __|
@@ -91,22 +91,22 @@ class Server:
             self.host = get_mac_address()
         self.port = PORT
         if (TYPE == "LAN"):
-            self.socker = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         else:
-            self.socker = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_STREAM, socket.BTPROTO_RFCOMM)
+            self.socket = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_STREAM, socket.BTPROTO_RFCOMM)
         self.is_stoped = threading.Event()
     
     def run(self):
         try:
-            self.socker.bind((self.host, self.port))
+            self.socket.bind((self.host, self.port))
         except OSError:
             print("[-] Address already in use, or could not run bluetooth !")
             print(f"[+] Please kill the process using the port {self.port} and restart the server using the \"srv-start\" command")
             self.is_stoped.set()
             return
-        self.socker.listen(5)
+        self.socket.listen(5)
         while not self.is_stoped.is_set():
-            conn, (ip, port) = self.socker.accept()
+            conn, (ip, port) = self.socket.accept()
             if ip in BANNED:
                 conn.close()
                 continue
@@ -137,6 +137,7 @@ class Server:
                 conn.send(crypt(input().encode(), PASSWORD.encode()))
         except:
             print(f"[!] Closed connection with {name}")
+        conn.close()
     
     def start(self):
         threading.Thread(target=self.run, daemon=True).start()
@@ -617,7 +618,7 @@ def do_zip_update():
             sys.exit(1)
         print("\nLets-talk is now updated !")
         print("Please restart to aply updates !")
-        sys.exit(1)
+        sys.exit(0)
 
 def main():
     global PORT, NAME, DELAY, NO_SCAN, PASSWORD, SRV
